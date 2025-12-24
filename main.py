@@ -1,12 +1,23 @@
+#!/usr/bin/env python3
 """
 TODO: Add support for missing CONNECT INDICATOR
+Features:
+- Treeview connections
+- Real time capture
+- GATT Client
+- More filters
+- Export information
+- Realtime filters
+
 """
 
 import os
 import cmd
 import argparse
+from enum import Enum, auto
 from rich.console import Console
 from rich.table import Table
+from rich.tree import Tree
 from scapy.all import *
 from scapy.layers.bluetooth import *
 from scapy.layers.bluetooth4LE import *
@@ -18,6 +29,33 @@ BT_ATT_Read_Response  = 0xb
 BT_ATT_Write_Request  = 0x12
 BT_ATT_Write_Response = 0x13
 BT_ATT_Write_Command  = 0x52
+BT_ATT_Notification   = 0x1b
+
+class BLEEventType(Enum):
+  ATT_READ_REQ    = auto()
+  ATT_READ_RSP    = auto()
+  ATT_WRITE_REQ   = auto()
+  ATT_WRITE_RSP   = auto()
+  ATT_WRITE_CMD   = auto()
+  ATT_NOTIFY_RCV  = auto()
+  LL_CONNECT_ID   = auto()
+  LL_TERMINATE_ID = auto()
+  GENERIC         = auto()
+  
+  
+class BLEEvent:
+  def __init__(self, *, idx, ts, etype, handle=None, value=None, rssi=None, channel=None, raw_pkt=None):
+    self.idx = idx
+    self.timestamp = ts
+    self.type = etype
+    self.handle = handle
+    self.value = value
+    self.rssi = rssi
+    self.channel = channel
+    self.raw_pkt = raw_pkt
+    
+    self.parent = None
+    self.children = []
 
 def printable(s):
   pchar = lambda a: chr(a) if 32 <= a < 127 else '.'
@@ -48,7 +86,7 @@ def hexdump(s, bytes_per_line=16, bytes_per_group=8):
 
 
 
-class BLEConnection:
+class BLESession:
   def __init__(self, conn_id, access_address, start_pkt, source, destination):
     self.id             = conn_id
     self.source         = source
@@ -73,19 +111,16 @@ class BTCap:
     self.encrypted = False
     self.att_seen = False
     self.connections = {}
+    self.connections_by_id = {}
     self.conn_counter = 0
   
-  def get_connection_by_idx(self, idx) -> BLEConnection | None:
-    conn_keys = self.connections.keys()
-    if idx > len(conn_keys):
+  def get_connection_by_idx(self, idx) -> BLESession | None:
+    if idx > len(self.connections_by_id):
       console.print(f"[X] Error. Invalid index: {idx}", style="red")
       return None    
-    for i, aa in enumerate(conn_keys):
-      if i == idx:
-        return self.connections[aa]
-    return None
+    return self.connections_by_id[idx]
   
-  def get_connection_by_aa(self, access_address:str) -> BLEConnection | None:
+  def get_connection_by_aa(self, access_address:str) -> BLESession | None:
     try:
       access_address = access_address.lower()
       if access_address.startswith("0x"):
@@ -123,25 +158,33 @@ class BTCap:
   
   def group_connections(self):
     for idx, pkt in enumerate(self.pcap_file):
-      pkt_index = idx + 1
-      if pkt.haslayer(BTLE_CONNECT_REQ):
-        packet_req = pkt.getlayer(BTLE_CONNECT_REQ)
-        # Check if the next packet can be a connection follow indicator
-        next_packet = self.pcap_file[idx+1]
-        if next_packet.haslayer(BTLE_CTRL):
-          if next_packet.getlayer(BTLE_CTRL).opcode == 12 or next_packet.getlayer(BTLE_CTRL).opcode == 8:
-            aa = next_packet.access_addr
-            conn = BLEConnection(conn_id=self.conn_counter, access_address=aa, start_pkt=pkt_index, source=packet_req.InitA, destination=packet_req.AdvA)
-            self.connections[aa] = conn
-            console.print(f"[*] Detected: CONNECT IND | Connection #{conn.id} Source={packet_req.InitA} Destination={packet_req.AdvA} Access Address={hex(aa)} pkt={pkt_index}")
-            self.conn_counter += 1
-      elif pkt.haslayer(BTLE_CTRL):
-        if pkt.haslayer(LL_TERMINATE_IND):
-          self.connections[packet_btle.access_addr].terminate_connection(pkt_index)
-      elif pkt.haslayer(BTLE_DATA):
-        packet_btle = pkt.getlayer(BTLE)
-        if packet_btle.access_addr in self.connections:
-          self.connections[packet_btle.access_addr].add_packet(pkt_index, pkt)
+      try:
+        pkt_index = idx + 1
+        if pkt.haslayer(BTLE_CONNECT_REQ):
+          packet_req = pkt.getlayer(BTLE_CONNECT_REQ)
+          # Check if the next packet can be a connection follow indicator
+          next_packet = self.pcap_file[idx+1]
+          if next_packet.haslayer(BTLE_CTRL):
+            if next_packet.getlayer(BTLE_CTRL).opcode == 12 or next_packet.getlayer(BTLE_CTRL).opcode == 8:
+              aa = next_packet.access_addr
+              conn = BLESession(conn_id=self.conn_counter, access_address=aa, start_pkt=pkt_index, source=packet_req.InitA, destination=packet_req.AdvA)
+              self.connections[aa] = conn
+              self.connections_by_id[conn.id] = conn
+              console.print(f"[*] Detected: CONNECT IND | Connection #{conn.id} Source={packet_req.InitA} Destination={packet_req.AdvA} Access Address={hex(aa)} pkt={pkt_index}")
+              self.conn_counter += 1
+        elif pkt.haslayer(BTLE_CTRL):
+          if pkt.haslayer(LL_TERMINATE_IND):
+            packet_btle = pkt.getlayer(BTLE)
+            aa = packet_btle.access_addr
+            if aa in self.connections:
+              self.connections[aa].terminate_connection(pkt_index)
+        elif pkt.haslayer(BTLE_DATA):
+          packet_btle = pkt.getlayer(BTLE)
+          if packet_btle.access_addr in self.connections:
+            self.connections[packet_btle.access_addr].add_packet(pkt_index, pkt)
+      except Exception as e:
+        print(e)
+        continue
 
   def get_packet_by_idx(self, idx):
     if idx < 0 or idx > self.pcap_file_len:
@@ -171,8 +214,95 @@ class BTCap:
 
 
 class BTCapDissector:
-  def __init__(self, bt_connection: BLEConnection):
+  def __init__(self, bt_connection: BLESession):
     self.bt_connection = bt_connection
+    self.events: BLEEvent = []
+    self._parse_packets()
+    self._correlate()
+    
+  def _parse_packets(self):
+    if self.bt_connection.start_pkt:
+      self.events.append(BLEEvent(idx=self.bt_connection.start_pkt, ts=None, etype=BLEEventType.LL_CONNECT_ID, raw_pkt=None))
+    for idx, pkt in self.bt_connection.packets:
+      if pkt.haslayer(ATT_Hdr):
+        self._parse_att(idx, pkt)
+      else:
+        self.events.append(BLEEvent(idx=idx, ts=pkt.time, etype=BLEEventType.GENERIC, raw_pkt=pkt))
+    if self.bt_connection.terminated:
+      self.events.append(BLEEvent(idx=self.bt_connection.end_pkt, ts=None, etype=BLEEventType.LL_TERMINATE_ID, raw_pkt=None))
+  
+  def _parse_att(self, idx, pkt):
+    opcode = pkt.opcode
+    if opcode == BT_ATT_Read_Request:
+      etype = BLEEventType.ATT_READ_REQ
+      handle = pkt.gatt_handle
+      value = None
+    elif opcode == BT_ATT_Read_Response:
+      etype = BLEEventType.ATT_READ_RSP
+      handle = None
+      value = pkt.value
+    elif opcode == BT_ATT_Write_Request:
+      etype = BLEEventType.ATT_WRITE_REQ
+      handle = pkt.gatt_handle
+      value = pkt.data
+    elif opcode == BT_ATT_Write_Response:
+      etype = BLEEventType.ATT_WRITE_RSP
+      handle = None
+      value = None
+    elif opcode == BT_ATT_Write_Command:
+      etype = BLEEventType.ATT_WRITE_CMD
+      handle = pkt.gatt_handle
+      value = pkt.data
+    elif opcode == BT_ATT_Notification:
+      etype = BLEEventType.ATT_NOTIFY_RCV
+      handle = pkt.gatt_handle
+      value = pkt.value
+    else:
+      etype = BLEEventType.GENERIC
+      handle = None
+      value = None
+    self.events.append(BLEEvent(idx=idx, ts=pkt.time, etype=etype, handle=handle, value=value, rssi=pkt.signal, channel=pkt.rf_channel, raw_pkt=pkt))
+  
+  def _correlate(self):
+    pending = []
+    for ev in self.events:
+      if ev.type in (
+        BLEEventType.ATT_READ_REQ,
+        BLEEventType.ATT_WRITE_REQ,
+      ):
+        pending.append(ev)
+      elif ev.type in (BLEEventType.ATT_READ_RSP, BLEEventType.ATT_WRITE_RSP):
+        if pending:
+          req = pending.pop(0)
+          req.children.append(ev)
+          ev.parent = req
+
+  def render_tree(self):
+    root = Tree(f"Connection {self.bt_connection.id}")
+    for ev in self.events:
+      if ev.parent:
+        continue
+
+      node = root.add(self._fmt_event(ev))
+      for child in ev.children:
+        node.add(self._fmt_event(child))
+    console.print(root)
+
+  def _fmt_event(self, ev):
+    base = f"[{ev.idx}] {ev.type.name}"
+    if ev.handle:
+      base += f" handle={hex(ev.handle)}"
+    if ev.value:
+      base += f" value={ev.value.hex()}"
+    return base
+  
+  def show_events(self, filter=None):
+    for ev in self.events:
+      if filter and filter not in ev.type.name.lower():
+        continue
+      console.print(self._fmt_event(ev))
+    
+    self.render_tree()
   
   def show_connection_information(self):
     table = Table(title=f"Connection {self.bt_connection.id}")
@@ -295,7 +425,7 @@ class MainCmd(cmd.Cmd):
       try:
         self.bt.show_packet(int(args))
       except Exception:
-        self.connection_loaded.get_packet_information(args)
+        self.connection_loaded.show_events(args)
   
   def do_get(self, args):
     # TODO: Handle this format to perform more information
