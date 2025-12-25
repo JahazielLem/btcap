@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "btcap"
+dynamic = ["version"]
+authors = [
+  { name="Kevin Leon", email="kevinleon.morales@gmail.com" },
+]
+description = "Analyze Bluetooth packets in an interactive text-based user interface."
+readme = "README.md"
+license = { text="GPL-3.0-only" }
+requires-python = ">=3.0"
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+]
+dependencies = [
+    "scapy",
+    "textual"
+]
+keywords = [ "scapy", "wireshark", "tui" ]
+
+[project.scripts]
+scapytui = "btcap:main"
+
+[project.urls]
+"Homepage" = "https://github.com/JahazielLem/btcap"
+"Bug Tracker" = "https://github.com/JahazielLem/btcap/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/btcap"]
+
+[tool.hatch.version]
+source = "vcs"
