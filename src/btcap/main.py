@@ -1,11 +1,14 @@
 #!/usr/bin/venv python
 # Copyright 2025 - 2025, Kevin Leon
 # SPDX-License-Identifier: GPL-3.0-only
+
+"""TODO: Add session naming and descrption """
+
 import argparse
 import cmd
 from pathlib import Path
 from cli.handler import Context, CLIState, CommandDispatcher
-from cli.cli import Session, Show, Set
+from cli.cli import Session, Show, Set, Summary
 
 class BTCapShell(cmd.Cmd):
   intro = "BTCap console — type 'help' to list commands"
@@ -52,6 +55,7 @@ if __name__ == "__main__":
   dispatcher.register(Session())
   dispatcher.register(Show())
   dispatcher.register(Set())
+  dispatcher.register(Summary())
 
   BTCapShell(dispatcher).cmdloop()
 

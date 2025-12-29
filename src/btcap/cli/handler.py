@@ -1,12 +1,12 @@
 #!/usr/bin/venv python
 # Copyright 2025 - 2025, Kevin Leon
 # SPDX-License-Identifier: GPL-3.0-only
-import argparse
-import cmd
 from pathlib import Path
 from enum import Enum, auto
-from cli.bt_sessions import BTContext, FMTPacket
+from rich.console import Console
+from cli.bt_sessions import BTContext, FMTPacket, BTFormatPrint
 
+console = Console()
 class Context(Enum):
   GLOBAL  = auto()
   SESSION = auto()
@@ -20,6 +20,7 @@ class CLIState:
     self.device          = None
     self.filters         = []
     self.view_mode       = FMTPacket.BRIEF
+    console.print(BTFormatPrint().show_connections(self.sessions))
 
 class Command:
   name = ""

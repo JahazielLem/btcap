@@ -7,6 +7,17 @@ from rich.console import Console
 
 console = Console()
 
+class Summary(Command):
+  name = "summary"
+  context = {Context.GLOBAL, Context.SESSION}
+  help = "summary"
+  
+  def run(self, args, state):
+    if not state.current_session:
+      console.print("[-] Set session first!", style="yellow")
+      return
+    console.print(BTFormatPrint().show_summary_packets(state.current_session))
+
 class Show(Command):
   name = "show"
   context = {Context.GLOBAL, Context.SESSION}

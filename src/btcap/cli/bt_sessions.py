@@ -70,11 +70,11 @@ class BLEEvent:
   def __init__(self, *, idx, ts, etype, handle=None, value=None, rssi=None, channel=None, raw_pkt=None):
     self.idx = idx
     self.timestamp = ts
-    self.type = etype
+    self.type: BLEEventType = etype
     self.handle = handle
     self.value = value
     self.rssi = rssi
-    self.channel = channel
+    self.channel: int = channel
     self.raw_pkt = raw_pkt
     
     self.parent = None
@@ -255,7 +255,7 @@ class BTFormatPrint:
     if ev.handle:
       base += f" handle={hex(ev.handle)}"
     if ev.value:
-      base += f" value={ev.value.hex()}"
+      base += f" value={ev.value.hex()} | value= {ev.value.decode('utf-8', errors='replace')}"
     return base
   
   def show_connections(self, sessions):
@@ -322,3 +322,24 @@ class BTFormatPrint:
       return sfmt
     else:
       return self._fmt_event(ev)
+  
+  def show_summary_packets(self, session: BTSession, filter="all"):
+    table = Table(title=f"[bold]Summary Session: {session.id}[/bold]", row_styles=["dim", ""])
+    table.add_column("Packet No.")
+    table.add_column("Event")
+    table.add_column("Handle")
+    table.add_column("Value")
+    dissector = BTSessionDissector(session=session)
+    for ev in dissector.events:
+      if ev.type != BLEEventType.GENERIC:
+        handle = ""
+        if ev.handle:
+          handle = str(hex(ev.handle))
+        
+        value = ""
+        if ev.value:
+          value = str(ev.value.hex())
+        
+        table.add_row(str(ev.idx), str(ev.type.name), handle, value)
+    
+    return table
