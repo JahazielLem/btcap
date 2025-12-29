@@ -55,7 +55,7 @@ class CommandDispatcher:
       return
     
     ctx = self.context()
-    if ctx not in cmd.context:
+    if ctx not in cmd.contexts:
       print(f"[X] Command '{name}' not available in {ctx.name} context")
       return
     

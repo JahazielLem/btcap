@@ -65,6 +65,40 @@ def hexdump_ev(s, bytes_per_line=16, bytes_per_group=8):
     prev_chunk = chunk
   return '\n'.join(lines)
 
+class ATTParser:
+  @staticmethod
+  def parse(idx, pkt) -> BLEEvent:
+    opcode = pkt.opcode
+    if opcode == BT_ATT_Read_Request:
+      etype = BLEEventType.ATT_READ_REQ
+      handle = pkt.gatt_handle
+      value = None
+    elif opcode == BT_ATT_Read_Response:
+      etype = BLEEventType.ATT_READ_RSP
+      handle = None
+      value = pkt.value
+    elif opcode == BT_ATT_Write_Request:
+      etype = BLEEventType.ATT_WRITE_REQ
+      handle = pkt.gatt_handle
+      value = pkt.data
+    elif opcode == BT_ATT_Write_Response:
+      etype = BLEEventType.ATT_WRITE_RSP
+      handle = None
+      value = None
+    elif opcode == BT_ATT_Write_Command:
+      etype = BLEEventType.ATT_WRITE_CMD
+      handle = pkt.gatt_handle
+      value = pkt.data
+    elif opcode == BT_ATT_Notification:
+      etype = BLEEventType.ATT_NOTIFY_RCV
+      handle = pkt.gatt_handle
+      value = pkt.value
+    else:
+      etype = BLEEventType.GENERIC
+      handle = None
+      value = None
+    return BLEEvent(idx=idx, ts=pkt.time, etype=etype, handle=handle, value=value, rssi=pkt.signal, channel=pkt.rf_channel, raw_pkt=pkt)
+    
 
 class BLEEvent:
   def __init__(self, *, idx, ts, etype, handle=None, value=None, rssi=None, channel=None, raw_pkt=None):
@@ -90,6 +124,7 @@ class BTSession:
     self.end_pkt        = None
     self.packets        = []
     self.terminated     = False
+    self._dissector     = None
   
   def add_packet(self, packet_idx, packet):
     self.packets.append((packet_idx, packet))
@@ -103,6 +138,11 @@ class BTSession:
       if i == idx:
         return pkt
     return None
+  
+  def dissector(self):
+    if not self._dissector:
+      self._dissector = BTSessionDissector(self)
+    return self._dissector
 
 class BTContext:
   def __init__(self, path: Path):
@@ -150,38 +190,6 @@ class BTContext:
   def get_sessions(self) -> dict:
     return self.connections_by_id
 
-  def _parse_att(self, idx, pkt) -> BLEEvent:
-    opcode = pkt.opcode
-    if opcode == BT_ATT_Read_Request:
-      etype = BLEEventType.ATT_READ_REQ
-      handle = pkt.gatt_handle
-      value = None
-    elif opcode == BT_ATT_Read_Response:
-      etype = BLEEventType.ATT_READ_RSP
-      handle = None
-      value = pkt.value
-    elif opcode == BT_ATT_Write_Request:
-      etype = BLEEventType.ATT_WRITE_REQ
-      handle = pkt.gatt_handle
-      value = pkt.data
-    elif opcode == BT_ATT_Write_Response:
-      etype = BLEEventType.ATT_WRITE_RSP
-      handle = None
-      value = None
-    elif opcode == BT_ATT_Write_Command:
-      etype = BLEEventType.ATT_WRITE_CMD
-      handle = pkt.gatt_handle
-      value = pkt.data
-    elif opcode == BT_ATT_Notification:
-      etype = BLEEventType.ATT_NOTIFY_RCV
-      handle = pkt.gatt_handle
-      value = pkt.value
-    else:
-      etype = BLEEventType.GENERIC
-      handle = None
-      value = None
-    return BLEEvent(idx=idx, ts=pkt.time, etype=etype, handle=handle, value=value, rssi=pkt.signal, channel=pkt.rf_channel, raw_pkt=pkt)
-
 class BTSessionDissector:
   def __init__(self, session: BTSession):
     self.session = session
@@ -194,43 +202,11 @@ class BTSessionDissector:
       self.events.append(BLEEvent(idx=self.session.start_pkt, ts=None, etype=BLEEventType.LL_CONNECT_ID, raw_pkt=None))
     for idx, pkt in self.session.packets:
       if pkt.haslayer(ATT_Hdr):
-        self.events.append(self._parse_att(idx, pkt))
+        self.events.append(ATTParser.parse(idx, pkt))
       else:
         self.events.append(BLEEvent(idx=idx, ts=pkt.time, etype=BLEEventType.GENERIC, raw_pkt=pkt))
     if self.session.terminated:
       self.events.append(BLEEvent(idx=self.session.end_pkt, ts=None, etype=BLEEventType.LL_TERMINATE_ID, raw_pkt=None))
-  
-  def _parse_att(self, idx, pkt):
-    opcode = pkt.opcode
-    if opcode == BT_ATT_Read_Request:
-      etype = BLEEventType.ATT_READ_REQ
-      handle = pkt.gatt_handle
-      value = None
-    elif opcode == BT_ATT_Read_Response:
-      etype = BLEEventType.ATT_READ_RSP
-      handle = None
-      value = pkt.value
-    elif opcode == BT_ATT_Write_Request:
-      etype = BLEEventType.ATT_WRITE_REQ
-      handle = pkt.gatt_handle
-      value = pkt.data
-    elif opcode == BT_ATT_Write_Response:
-      etype = BLEEventType.ATT_WRITE_RSP
-      handle = None
-      value = None
-    elif opcode == BT_ATT_Write_Command:
-      etype = BLEEventType.ATT_WRITE_CMD
-      handle = pkt.gatt_handle
-      value = pkt.data
-    elif opcode == BT_ATT_Notification:
-      etype = BLEEventType.ATT_NOTIFY_RCV
-      handle = pkt.gatt_handle
-      value = pkt.value
-    else:
-      etype = BLEEventType.GENERIC
-      handle = None
-      value = None
-    return BLEEvent(idx=idx, ts=pkt.time, etype=etype, handle=handle, value=value, rssi=pkt.signal, channel=pkt.rf_channel, raw_pkt=pkt)
   
   def _correlate(self):
     pending = []
@@ -288,7 +264,7 @@ class BTFormatPrint:
       console.print(f"[{idx}] \t{pkt.summary()}")
   
   def show_session_fmt_tree(self, session: BTSession):
-    dissector = BTSessionDissector(session=session)
+    dissector = session.dissector()
     root = Tree(f"Connection {session.id}")
     for ev in dissector.events:
       if ev.parent:
@@ -300,12 +276,12 @@ class BTFormatPrint:
     console.print(root)
   
   def show_session_fmt_packet(self, session: BTSession):
-    dissector = BTSessionDissector(session=session)
+    dissector = session.dissector()
     for ev in dissector.events:
       console.print(f"[{ev.idx}] \tType: {ev.type} \tTimestamp: {ev.timestamp}\n\tRSSI: {ev.rssi}\n\tChannel: {ev.channel}\n\tType: {ev.type}\n")
     
   def show_session_packet(self, session: BTSession, idx, fmt: FMTPacket = FMTPacket.BRIEF):
-    dissector = BTSessionDissector(session=session)
+    dissector = session.dissector()
     for ev in dissector.events:
       if ev.idx == idx:
         console.print(self._packet_fmt_handler(ev, fmt))

@@ -9,7 +9,7 @@ console = Console()
 
 class Summary(Command):
   name = "summary"
-  context = {Context.GLOBAL, Context.SESSION}
+  contexts = {Context.GLOBAL, Context.SESSION}
   help = "summary"
   
   def run(self, args, state):
@@ -20,7 +20,7 @@ class Summary(Command):
 
 class Show(Command):
   name = "show"
-  context = {Context.GLOBAL, Context.SESSION}
+  contexts = {Context.GLOBAL, Context.SESSION}
   help = "show pcap | tree | packet <id>"
   
   def run(self, args, state):
@@ -45,7 +45,7 @@ class Show(Command):
 
 class Session(Command):
   name = "session"
-  context = {Context.GLOBAL, Context.SESSION}
+  contexts = {Context.GLOBAL, Context.SESSION}
   help = "session empty | id"
   
   def run(self, args, state):
@@ -65,7 +65,7 @@ class Session(Command):
   
 class Set(Command):
   name = "set"
-  context = {Context.GLOBAL, Context.SESSION}
+  contexts = {Context.GLOBAL, Context.SESSION}
   help = "set view <brief | details | hexdump>"
   
   def run(self, args, state):
