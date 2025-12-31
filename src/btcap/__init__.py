@@ -4,6 +4,8 @@
 
 from .main import main
 
+__name__ = "btcap"
+__version__ = "0.0.1-beta.1"
 __all__ = [
     'main'
 ]

@@ -5,57 +5,30 @@
 """TODO: Add session naming and descrption """
 
 import argparse
-import cmd
 from pathlib import Path
-from cli.handler import Context, CLIState, CommandDispatcher
-from cli.cli import Session, Show, Set, Summary
+from core.state import AppState, CommandDispatcher, ShellHandler
+from core.fsession import FSession
+from ccmd.session import Session
 
-class BTCapShell(cmd.Cmd):
-  intro = "BTCap console — type 'help' to list commands"
-  prompt = "btcap > "
-
-  def __init__(self, dispatcher):
-    super().__init__()
-    self.dispatcher = dispatcher
-
-  def default(self, line):
-    try:
-      self.dispatcher.dispatch(line)
-    except Exception as e:
-      print(f"[!] Error: {e}")
-
-  def do_exit(self, _):
-    return True
-
-  def do_EOF(self, _):
-    return True
-  
-  def postcmd(self, stop, line):
-    ctx = self.dispatcher.context()
-    if ctx == Context.GLOBAL:
-      self.prompt = "btcap > "
-    elif ctx == Context.SESSION:
-      self.prompt = f"btcap(session:{self.dispatcher.state.current_session.id}) > "
-    elif ctx == Context.DEVICE:
-      self.prompt = "btcap(device) > "
-    return stop
-  
-  def do_help(self, arg):
-    ctx = self.dispatcher.context()
-    for cmd in self.dispatcher.commands.values():
-      if ctx in cmd.contexts:
-        print(f"{cmd.name:10} {cmd.help}")
+from view.view import show_sessions
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument('filename', type=Path)
+  parser = argparse.ArgumentParser(prog="BTCap", description="BTCap - Bluetooth PCAP Connection analysis tool.", epilog="For more information check -> https://github.com/JahazielLem/btcap")
+  parser.add_argument("-f", "--file", dest="filename", type=Path, help="PCAP/PCAPNG file to load")
   args = parser.parse_args()
-  state = CLIState(args.filename)
+  
+  state = AppState()  
+  
+  if args.filename:
+    session = FSession(args.filename)
+    state.add_session(session=session)
+  
   dispatcher = CommandDispatcher(state)
+  show_sessions(state.sessions)
   dispatcher.register(Session())
-  dispatcher.register(Show())
-  dispatcher.register(Set())
-  dispatcher.register(Summary())
+  # dispatcher.register(Connection())
+  # dispatcher.register(Set())
+  # dispatcher.register(Summary())
 
-  BTCapShell(dispatcher).cmdloop()
+  ShellHandler(dispatcher).cmdloop()
 
