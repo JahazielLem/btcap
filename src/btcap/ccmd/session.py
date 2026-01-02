@@ -1,6 +1,6 @@
 from core.state import Command, CommandGroup, Context
 from view.view import PRINT_ERROR, PRINT_WARNING, PRINT_SUCCESS
-from view.view import show_session_summary, show_sessions
+from view.view import show_session_summary, show_sessions, show_connection_summary
 
 class SessionList(Command):
   name = "list"
@@ -96,20 +96,15 @@ class ConnectionShow(Command):
 
   def run(self, args, state):
     if not args:
-      PRINT_ERROR("Session id is required")
+      PRINT_ERROR("Connection id is required")
       return
     try:
       sid = int(args[0])
-      sess = state.get_session(sid)
-      if not sess:
-        PRINT_WARNING(f"Invalid connection: {sid}")
-        return
-      show_session_summary(sess)
     except ValueError:
         PRINT_ERROR("Invalid alias")
 
 class Connection(CommandGroup):
-  name = "conn"
+  name = "connections"
   help = "Show connection or set connection using the <id>"
   usage = "connection <id>"
   aliases = ["con", "connection"]
@@ -133,4 +128,3 @@ class Session(CommandGroup):
     self.register(SessionSet())
     self.register(SessionShow())
     self.register(SessionList())
-    self.register(Connection())

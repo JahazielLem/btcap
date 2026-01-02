@@ -81,7 +81,11 @@ class CommandGroup(Command):
 
   def show_help(self):
     for name, cmd in self.subcommands.items():
-      print(f"{name:10} {cmd.help}")
+      usage = ""
+      if cmd.usage:
+        usage = f"\n\t{cmd.usage}"
+      print(f"{cmd.name:10} {cmd.help}{usage}")
+      
 
 class CommandDispatcher:
   def __init__(self, state: AppState):
@@ -178,4 +182,7 @@ class ShellHandler(cmd.Cmd):
 
     for cmd in self.dispatcher.root_commands():
       if ctx in cmd.contexts:
-        print(f"{cmd.name:10} {cmd.help}")
+        usage = ""
+        if cmd.usage:
+          usage = f"\n\t{cmd.usage}"
+        print(f"{cmd.name:10} {cmd.help}{usage}")

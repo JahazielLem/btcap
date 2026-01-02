@@ -88,6 +88,12 @@ class BLEConnection:
     self.events = []
     self.active = True
   
+  def get_event(self, cid):
+    for ev in self.events:
+      if ev.id == cid:
+        return ev
+    return None
+  
   def add_event(self, evt: BLEEvent):
     evt.parent = self
     self.events.append(evt)

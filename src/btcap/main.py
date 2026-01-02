@@ -8,7 +8,8 @@ import argparse
 from pathlib import Path
 from core.state import AppState, CommandDispatcher, ShellHandler
 from core.fsession import FSession
-from ccmd.session import Session
+from ccmd.session import Session, Connection
+from ccmd.show import Show
 
 from view.view import show_sessions
 
@@ -26,8 +27,8 @@ if __name__ == "__main__":
   dispatcher = CommandDispatcher(state)
   show_sessions(state.sessions)
   dispatcher.register(Session())
-  # dispatcher.register(Connection())
-  # dispatcher.register(Set())
+  dispatcher.register(Connection())
+  dispatcher.register(Show())
   # dispatcher.register(Summary())
 
   ShellHandler(dispatcher).cmdloop()
